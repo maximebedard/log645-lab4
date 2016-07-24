@@ -114,7 +114,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   char *source_str;
   size_t source_size;
 
-  /* Load the source code containing the kernel*/
+  // Load the source code containing the kernel
   fp = fopen("./main.cl", "r");
   if (!fp) {
     fprintf(stderr, "Failed to load kernel.\n");
@@ -131,7 +131,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   // Create OpenCL context
   context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &ret);
 
-  /* Create Command Queue */
+  // Create Command Queue
   command_queue = clCreateCommandQueue(context, device_id, 0, &ret);
 
   // Create Memory Buffer
