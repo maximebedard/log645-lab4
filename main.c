@@ -59,7 +59,7 @@ int main(int argc, char const *argv[]) {
   DEBUG_PRINT("par-init\n========\n");
   matrix_print(m, n, matrix);
   start = get_current_time();
-  // heat_dissipation_par(m, n, matrix, np, td, h);
+  heat_dissipation_par(m, n, matrix, np, td, h);
   end = get_current_time();
   double dt_par = end - start;
   DEBUG_PRINT("par-final\n=========\n");
@@ -67,7 +67,7 @@ int main(int argc, char const *argv[]) {
 
   printf("|seq|par|acceleration|\n");
   printf("|---|---|------------|\n");
-  printf("|%.f|%.f|%.f|\n", dt_seq, dt_par, dt_seq / dt_par);
+  printf("|%.8f|%.8f|%.8f|\n", dt_seq, dt_par, dt_seq / dt_par);
 
   return 0;
 }
