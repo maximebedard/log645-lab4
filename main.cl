@@ -15,3 +15,13 @@ __kernel void hello(__global char* string)
   string[12] = '!';
   string[13] = '\0';
 }
+//
+// __kernel void heat_dissipation(
+//   float* u0,
+//   float* u1,
+//   __global int np,
+//   __global float td,
+//   __global float h)
+// {
+//
+// }
