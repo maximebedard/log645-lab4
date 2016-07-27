@@ -107,9 +107,16 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
 
   char string[MEM_SIZE];
 
-  unsigned int mem_size_A = sizeof(float) * 2 * m * n;
+  int mem_size_A = sizeof(float) * 2 * m * n;
   float* h_matrix = (float*) malloc(mem_size_A);
-  // h_matrix = memcpy(h_matrix, *matrix, mem_size_A);
+
+  for(int k = 0; k < 2; k++) {
+    for(int i = 0; i < m; i++) {
+      for(int j = 0; j < n; j++) {
+        h_matrix[100*k + i * m + j] = matrix[k][i][j];
+      }
+    }
+  }
 
   cl_mem d_matrix;
 
