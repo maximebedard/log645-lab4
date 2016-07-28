@@ -217,6 +217,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
     printf("Error: Failed to set kernel arguments! %d\n", ret);
     exit(1);
   }
+
   int current = 0;
   for(int k = 0; k < np; k++) {
     if(current == 0) {
