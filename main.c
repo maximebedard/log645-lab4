@@ -107,18 +107,24 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
 
   char string[MEM_SIZE];
 
-  int mem_size_A = sizeof(float) * 2 * m * n;
+  int mem_size_A = sizeof(float) * m * n;
   float* h_matrix = (float*) malloc(mem_size_A);
+  float* j_matrix = (float*) malloc(mem_size_A);
 
-  for(int k = 0; k < 2; k++) {
-    for(int i = 0; i < m; i++) {
-      for(int j = 0; j < n; j++) {
-        h_matrix[100*k + i * m + j] = matrix[k][i][j];
-      }
+  // yolo refactor this pls.
+  for(int i = 0; i < m; i++) {
+    for(int j = 0; j < n; j++) {
+      h_matrix[i * n + j] = matrix[0][i][j];
     }
   }
 
-  cl_mem d_matrix;
+  for(int i = 0; i < m; i++) {
+    for(int j = 0; j < n; j++) {
+      j_matrix[i * m + j] = matrix[1][i][j];
+    }
+  }
+
+  cl_mem d_matrix, e_matrix;
 
   FILE *fp;
   char *source_str;
@@ -153,7 +159,15 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
     &ret
   );
 
-  if (!d_matrix)
+  e_matrix = clCreateBuffer(
+    context,
+    CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+    mem_size_A,
+    j_matrix,
+    &ret
+  );
+
+  if (!d_matrix || !e_matrix)
   {
     printf("Error: Failed to allocate device memory!\n");
     exit(1);
@@ -185,31 +199,52 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   // Create OpenCL Kernel
   kernel = clCreateKernel(program, "heat_dissipation", &ret);
 
+  // set workgroups/workitems
+  size_t global_item_size = (m - 2) * (n - 2); // Process the entire lists
+  size_t local_item_size = 8; // Process in groups of 8
+
   // Set OpenCL Kernel Parameters
-  ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&d_matrix);
-  ret |= clSetKernelArg(kernel, 1, sizeof(int), (void *)&m);
-  ret |= clSetKernelArg(kernel, 2, sizeof(int), (void *)&n);
-  ret |= clSetKernelArg(kernel, 3, sizeof(int), (void *)&np);
-  ret |= clSetKernelArg(kernel, 4, sizeof(float), (void *)&td);
-  ret |= clSetKernelArg(kernel, 5, sizeof(float), (void *)&h);
+  ret =  clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&d_matrix);
+  ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&e_matrix);
+  ret |= clSetKernelArg(kernel, 2, sizeof(int), (void *)&m);
+  ret |= clSetKernelArg(kernel, 3, sizeof(int), (void *)&n);
+  ret |= clSetKernelArg(kernel, 4, sizeof(int), (void *)&np);
+  ret |= clSetKernelArg(kernel, 5, sizeof(float), (void *)&td);
+  ret |= clSetKernelArg(kernel, 6, sizeof(float), (void *)&h);
 
   if (ret != CL_SUCCESS)
   {
     printf("Error: Failed to set kernel arguments! %d\n", ret);
     exit(1);
   }
+  int current = 0;
+  for(int k = 0; k < np; k++) {
+    if(current == 0) {
+      ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&d_matrix);
+      ret = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&e_matrix);
+    } else {
+      ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&e_matrix);
+      ret = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&d_matrix);
+    }
 
-  // Execute OpenCL Kernel
-  ret = clEnqueueTask(command_queue, kernel, 0, NULL,NULL);
+    ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL,
+      &global_item_size, NULL, 0, NULL, NULL);
+
+    current = k % 2;
+  }
 
   // Copy results from the memory buffer
   ret = clEnqueueReadBuffer(
-    command_queue, d_matrix, CL_TRUE, 0,
-    MEM_SIZE * sizeof(char), string, 0, NULL, NULL
+    command_queue,
+    (current == 0 ? d_matrix : e_matrix),
+    CL_TRUE,
+    0,
+    mem_size_A,
+    &matrix[0],
+    0,
+    NULL,
+    NULL
   );
-
-  // Display Result
-  puts(string);
 
   // Finalization
   ret = clFlush(command_queue);
@@ -220,7 +255,8 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   ret = clReleaseCommandQueue(command_queue);
   ret = clReleaseContext(context);
 
-  free(source_str);
+  free(h_matrix);
+  free(j_matrix);
 }
 
 double get_current_time() {
