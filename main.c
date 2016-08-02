@@ -108,7 +108,6 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int *current, int
   cl_int ret;
 
   // char string[MEM_SIZE];
-
   int mem_size_A = sizeof(float) * m * n;
   float* h_matrix = (float*) malloc(mem_size_A);
   float* j_matrix = (float*) malloc(mem_size_A);
@@ -117,7 +116,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int *current, int
   for(int i = 0; i < m; i++) {
     for(int j = 0; j < n; j++) {
       h_matrix[i * n + j] = matrix[0][i][j];
-      j_matrix[i * m + j] = matrix[1][i][j];
+      j_matrix[i * n + j] = matrix[1][i][j];
     }
   }
 

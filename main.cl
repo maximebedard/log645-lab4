@@ -4,7 +4,6 @@ __kernel void heat_dissipation(__global float* a, __global float* b, int m, int 
 
   int i = id / (n - 2) + 1;
   int j = id % (n - 2) + 1;
-
   int index = i * n + j;
 
   a[index] = (1.0 - 4*td / h*h) * b[index] +
