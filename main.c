@@ -21,11 +21,11 @@
 #define MEM_SIZE (128)
 #define MAX_SOURCE_SIZE (0x100000)
 
-void heat_dissipation_seq(int m, int n, float matrix[2][m][n], int np, float td, float h);
-void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td, float h);
+void heat_dissipation_seq(int m, int n, float matrix[2][m][n], int *current, int np, float td, float h);
+void heat_dissipation_par(int m, int n, float matrix[2][m][n], int *current, int np, float td, float h);
 
 void matrix_init(int m, int n, float matrix[2][m][n]);
-void matrix_print(int m, int n, float matrix[2][m][n]);
+void matrix_print(int m, int n, float matrix[2][m][n], int current);
 
 double get_current_time();
 
@@ -46,26 +46,27 @@ int main(int argc, char const *argv[]) {
   float matrix[2][m][n];
 
   printf("m=%d, n=%d, np=%d, td=%.5f, h=%.5f\n", m, n, np, td, h);
-
+  int current = 0;
   matrix_init(m, n, matrix);
   DEBUG_PRINT("seq-init\n========\n");
-  matrix_print(m, n, matrix);
+  matrix_print(m, n, matrix, current);
   start = get_current_time();
-  heat_dissipation_seq(m, n, matrix, np, td, h);
+  heat_dissipation_seq(m, n, matrix, &current, np, td, h);
   end = get_current_time();
   double dt_seq = end - start;
   DEBUG_PRINT("seq-final\n=========\n");
-  matrix_print(m, n, matrix);
+  matrix_print(m, n, matrix, current);
 
+  current = 0;
   matrix_init(m, n, matrix);
   DEBUG_PRINT("par-init\n========\n");
-  matrix_print(m, n, matrix);
+  matrix_print(m, n, matrix, current);
   start = get_current_time();
-  heat_dissipation_par(m, n, matrix, np, td, h);
+  heat_dissipation_par(m, n, matrix, &current, np, td, h);
   end = get_current_time();
   double dt_par = end - start;
   DEBUG_PRINT("par-final\n=========\n");
-  matrix_print(m, n, matrix);
+  matrix_print(m, n, matrix, current);
 
   printf("|seq|par|acceleration|\n");
   printf("|---|---|------------|\n");
@@ -74,26 +75,27 @@ int main(int argc, char const *argv[]) {
   return 0;
 }
 
-void heat_dissipation_seq(int m, int n, float matrix[2][m][n], int np, float td, float h) {
+void heat_dissipation_seq(int m, int n, float matrix[2][m][n], int *current, int np, float td, float h) {
   int i, j, k;
-  int current = 0;
+
+  *current = 0;
 
   for(k = 1; k < np; k++) {
     for(i = 1; i < m - 1; i++) {
       for(j = 1; j < n - 1; j++) {
-        matrix[current][i][j] = (1.0 - 4*td / h*h) * matrix[1-current][i][j] +
-          (td/h*h) * (matrix[1-current][i - 1][j] +
-                  matrix[1-current][i + 1][j] +
-                  matrix[1-current][i][j - 1] +
-                  matrix[1-current][i][j + 1]);
+        matrix[*current][i][j] = (1.0 - 4*td / h*h) * matrix[1-*current][i][j] +
+          (td/h*h) * (matrix[1-*current][i - 1][j] +
+                  matrix[1-*current][i + 1][j] +
+                  matrix[1-*current][i][j - 1] +
+                  matrix[1-*current][i][j + 1]);
       }
     }
 
-    current = k % 2;
+    *current = k % 2;
   }
 }
 
-void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td, float h) {
+void heat_dissipation_par(int m, int n, float matrix[2][m][n], int *current, int np, float td, float h) {
   cl_device_id device_id         = NULL;
   cl_context context             = NULL;
   cl_command_queue command_queue = NULL;
@@ -105,7 +107,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   cl_uint ret_num_platforms;
   cl_int ret;
 
-  char string[MEM_SIZE];
+  // char string[MEM_SIZE];
 
   int mem_size_A = sizeof(float) * m * n;
   float* h_matrix = (float*) malloc(mem_size_A);
@@ -115,11 +117,6 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
   for(int i = 0; i < m; i++) {
     for(int j = 0; j < n; j++) {
       h_matrix[i * n + j] = matrix[0][i][j];
-    }
-  }
-
-  for(int i = 0; i < m; i++) {
-    for(int j = 0; j < n; j++) {
       j_matrix[i * m + j] = matrix[1][i][j];
     }
   }
@@ -201,7 +198,7 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
 
   // set workgroups/workitems
   size_t global_item_size = (m - 2) * (n - 2); // Process the entire lists
-  size_t local_item_size = 8; // Process in groups of 8
+  // size_t local_item_size = 8; // Process in groups of 8
 
   // Set OpenCL Kernel Parameters
   ret =  clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&d_matrix);
@@ -218,30 +215,26 @@ void heat_dissipation_par(int m, int n, float matrix[2][m][n], int np, float td,
     exit(1);
   }
 
-  int current = 0;
-  for(int k = 0; k < np; k++) {
-    if(current == 0) {
-      ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&d_matrix);
-      ret = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&e_matrix);
-    } else {
-      ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&e_matrix);
-      ret = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&d_matrix);
-    }
+  *current = 0;
+  int k;
+  for(k = 1; k < np; k++) {
+    ret = clSetKernelArg(kernel, *current, sizeof(cl_mem), (void *)&d_matrix);
+    ret = clSetKernelArg(kernel, 1-*current, sizeof(cl_mem), (void *)&e_matrix);
 
     ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL,
       &global_item_size, NULL, 0, NULL, NULL);
 
-    current = k % 2;
+    *current = k % 2;
   }
 
   // Copy results from the memory buffer
   ret = clEnqueueReadBuffer(
     command_queue,
-    (current == 0 ? d_matrix : e_matrix),
+    (*current == 0 ? d_matrix : e_matrix ),
     CL_TRUE,
     0,
     mem_size_A,
-    &matrix[0],
+    &matrix[*current],
     0,
     NULL,
     NULL
@@ -288,11 +281,11 @@ void matrix_zero(int m, int n, float matrix[2][m][n]) {
   }
 }
 
-void matrix_print(int m, int n, float matrix[2][m][n]) {
+void matrix_print(int m, int n, float matrix[2][m][n], int current) {
   int i, j;
   for(i = 0; i < m; i++) {
     for(j = 0; j < n; j++) {
-      DEBUG_PRINT("|%15.2f", matrix[0][i][j]);
+      DEBUG_PRINT("|%15.2f", matrix[current][i][j]);
     }
     DEBUG_PRINT("|\n");
   }
